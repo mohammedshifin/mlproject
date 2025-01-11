@@ -1,39 +1,70 @@
 import os
 import sys
 import dill
-import numpy as np
-import pandas as pd
-from src.exception import CustomException
+
 from sklearn.model_selection import GridSearchCV
 from sklearn.metrics import r2_score
 
-def save_object(file_path, obj):
+from src.exception import CustomException
+
+def save_object(obj, file_path):
     try:
         dir_path = os.path.dirname(file_path)
         os.makedirs(dir_path, exist_ok=True)
+
         with open(file_path, 'wb') as file_obj:
             dill.dump(obj, file_obj)
+
     except Exception as e:
         raise CustomException(e, sys)
 
-def evaluate_models(X_train, Y_train, X_test, Y_test, models, params):
+
+def load_object(file_path:str):
+    try:
+        with open(file_path, 'rb') as file_obj:
+            return dill.load(file_obj)
+    except Exception as e:
+        raise CustomException(e, sys)
+
+
+def evaluate_models(X_train, y_train, X_test, y_test, models:dict, hyperparams:dict):
     try:
         report = {}
-        for model_name, model in models.items(): # Iterate directly through models.items()
-            para = params[model_name] # Access params using the model name
-            gs = GridSearchCV(model, para, cv=3)
-            gs.fit(X_train, Y_train)
+        best_model = None
+        best_score = float('-inf')
+        for model_name, model in models.items():
+            if model_name in hyperparams:
 
-            model.set_params(**gs.best_params_)
-            model.fit(X_train, Y_train)
+                param_grid = hyperparams[model_name]
+                grid_search = GridSearchCV(model, param_grid, scoring='r2', n_jobs=3, cv = 5 , verbose=5)
+                grid_search.fit(X_train, y_train)
 
-            y_train_pred = model.predict(X_train)
-            y_test_pred = model.predict(X_test)
+                current_best_model = grid_search.best_estimator_
 
-            train_model_score = r2_score(Y_train, y_train_pred)
-            test_model_score = r2_score(Y_test, y_test_pred)
+                y_train_pred = current_best_model.predict(X_train)
+                y_test_pred = current_best_model.predict(X_test)
 
-            report[model_name] = test_model_score # Use model_name as the key
-        return report
+                train_score = r2_score(y_train, y_train_pred)
+                test_score = r2_score(y_test, y_test_pred)
+
+                report[model_name] = test_score
+
+                if test_score > best_score:
+                    best_score = test_score
+                    best_model = current_best_model
+            
+            else:
+                model.fit(X_train, y_train)
+                test_score = r2_score(y_test, model.predict(X_test))
+                report[model_name] = test_score
+
+                if test_score > best_score:
+                    best_score = test_score
+                    best_model = current_best_model
+                
+
+        return (report, best_model)
+
     except Exception as e:
         raise CustomException(e, sys)
+    
